@@ -1,0 +1,88 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { supabase } from '../lib/supabase';
+
+let message = 'جاري التحقق...';
+let isValid = false;
+let appointment = null;
+
+try {
+  const { token, id } = Astro.url.searchParams;
+
+  if (!token || !id) {
+    throw new Error('رابط غير صالح');
+  }
+
+  const { data, error } = await supabase
+    .from('appointments')
+    .select('id, appointment_date, appointment_time, reschedule_token')
+    .eq('id', id)
+    .eq('reschedule_token', token)
+    .single();
+
+  if (error || !data) {
+    throw new Error('الرابط منتهي الصلاحية أو غير صالح');
+  }
+
+  appointment = data;
+  isValid = true;
+  message = 'يمكنك الآن إعادة جدولة موعدك';
+} catch (err) {
+  message = err.message || 'حدث خطأ غير متوقع';
+}
+---
+
+<BaseLayout title="إعادة جدولة الموعد">
+  <div class="max-w-lg mx-auto py-12">
+    <h1 class="text-3xl font-bold text-center mb-8">إعادة جدولة الموعد</h1>
+
+    {isValid ? (
+      <div>
+        <p class="text-lg mb-6 text-center">
+          الموعد الحالي: <strong>{appointment.appointment_date}</strong> الساعة <strong>{appointment.appointment_time}</strong>
+        </p>
+
+        <!-- نموذج إعادة الجدولة -->
+        <form action="/api/reschedule" method="post" class="space-y-6">
+          <input type="hidden" name="id" value={appointment.id} />
+          <input type="hidden" name="token" value={Astro.url.searchParams.get('token')} />
+
+          <div>
+            <label class="block text-sm font-medium mb-2">تاريخ جديد</label>
+            <input
+              type="date"
+              name="new_date"
+              required
+              class="w-full p-3 border rounded-lg"
+            />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">وقت جديد</label>
+            <input
+              type="time"
+              name="new_time"
+              required
+              class="w-full p-3 border rounded-lg"
+            />
+          </div>
+
+          <button
+            type="submit"
+            class="w-full py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition"
+          >
+            تأكيد التغيير
+          </button>
+        </form>
+      </div>
+    ) : (
+      <div class="text-center text-red-600">
+        <h2 class="text-2xl font-bold mb-4">خطأ</h2>
+        <p class="text-lg">{message}</p>
+        <a href="/" class="inline-block mt-6 px-8 py-3 bg-blue-600 text-white rounded-lg">
+          العودة للرئيسية
+        </a>
+      </div>
+    )}
+  </div>
+</BaseLayout>

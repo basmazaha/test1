@@ -1,110 +1,196 @@
 ---
-import BaseLayout from '../layouts/BaseLayout.astro';
+import BaseLayout from '../layouts/BaseLayout.astro'
 import { supabase } from '../lib/supabase';
 
+// متغيرات للتحكم في الحالة
+let status = 'loading';
 let message = 'جاري التحقق من الرابط...';
-let isSuccess = false;
-let debugInfo = ''; // لعرض تفاصيل الـ debug في الصفحة
+let errorMessage = '';
+
+// قراءة الـ parameters من الـ URL
+const token = Astro.url.searchParams.get('token');
+const id = Astro.url.searchParams.get('id');
 
 try {
-  // قراءة الـ params
-  const token = Astro.url.searchParams.get('token');
-  const id = Astro.url.searchParams.get('id');
-
-  // تسجيل للـ terminal
-  console.log('[CANCEL DEBUG] URL params raw:', Astro.url.search.toString());
-  console.log('[CANCEL DEBUG] token:', token);
-  console.log('[CANCEL DEBUG] id:', id);
-
   if (!token || !id) {
-    throw new Error('الرابط ناقص (token أو id مفقود)');
+    throw new Error('الرابط ناقص أو غير مكتمل');
   }
 
-  // استعلام بسيط ومفصل
-  const { data, error, count } = await supabase
+  // التحقق من وجود الحجز والتوكن
+  const { data: appointment, error } = await supabase
     .from('appointments')
-    .select('id, cancel_token', { count: 'exact' })
+    .select('id, cancel_token, status')
     .eq('id', id)
-    .eq('cancel_token', token);
+    .eq('cancel_token', token)
+    .single();
 
-  // تسجيل النتيجة
-  console.log('[CANCEL DEBUG] Supabase query result:', {
-    count,
-    data: data ? data[0] : null,
-    error: error ? error.message : null
-  });
+  if (error) throw error;
+  if (!appointment) throw new Error('الرابط غير صالح أو منتهي الصلاحية');
 
-  // عرض الـ debug في الصفحة
-  debugInfo = JSON.stringify({
-    received_token: token,
-    received_id: id,
-    query_count: count,
-    query_error: error?.message || 'لا يوجد خطأ'
-  }, null, 2);
-
-  if (error) {
-    throw new Error(`خطأ في الاستعلام من Supabase: ${error.message}`);
+  // لو الحجز ملغي بالفعل
+  if (appointment.status === 'cancelled') {
+    status = 'already_cancelled';
+    message = 'تم إلغاء هذا الموعد مسبقًا';
+    return;
   }
 
-  if (count !== 1 || !data || data.length !== 1) {
-    throw new Error(`لم يتم العثور على حجز مطابق (عدد السجلات: ${count})`);
-  }
-
-  // الإلغاء
+  // تنفيذ الإلغاء
   const { error: updateError } = await supabase
     .from('appointments')
     .update({ status: 'cancelled' })
     .eq('id', id);
 
-  if (updateError) {
-    console.error('[CANCEL DEBUG] Update error:', updateError);
-    throw new Error(`فشل تحديث حالة الحجز: ${updateError.message}`);
-  }
+  if (updateError) throw updateError;
 
-  isSuccess = true;
+  status = 'success';
   message = 'تم إلغاء الموعد بنجاح';
 
 } catch (err) {
-  console.error('[CANCEL DEBUG] Full error:', err);
-  message = err.message || 'حدث خطأ غير متوقع';
+  status = 'error';
+  message = 'حدث خطأ أثناء معالجة الطلب';
+  errorMessage = err.message || 'يرجى المحاولة مرة أخرى أو التواصل معنا مباشرة';
 }
 ---
 
-<BaseLayout title={isSuccess ? 'تم إلغاء الموعد' : 'خطأ في الإلغاء'}>
-  <div class="max-w-2xl mx-auto text-center py-16 px-6">
-    <h1 class={`text-4xl font-bold mb-8 ${isSuccess ? 'text-green-600' : 'text-red-600'}`}>
-      {message}
-    </h1>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{status === 'success' ? 'تم إلغاء الموعد' : 'خطأ في الإلغاء'}</title>
+  </head>
 
-    {isSuccess ? (
-      <div class="bg-green-50 border border-green-200 rounded-xl p-8 mb-8">
-        <p class="text-xl mb-4">
-          تم إلغاء حجزك بنجاح.
-        </p>
-        <p class="text-gray-700">
-          لن يتم خصم أي رسوم، ويمكنك حجز موعد جديد في أي وقت.
-        </p>
-      </div>
-    ) : (
-      <div class="bg-red-50 border border-red-200 rounded-xl p-8 mb-8">
-        <p class="text-xl mb-4">
-          الرابط غير صالح أو منتهي الصلاحية.
-        </p>
-        <p class="text-gray-700 mb-4">
-          يرجى التحقق من الرابط أو التواصل معنا مباشرة.
-        </p>
-        <details class="text-left text-sm text-gray-600">
-          <summary class="cursor-pointer font-medium">تفاصيل الخطأ (للـ debugging)</summary>
-          <pre class="bg-gray-100 p-4 rounded mt-2 overflow-auto text-xs">{debugInfo}</pre>
-        </details>
-      </div>
-    )}
+  <body class="cancel-page">
+    <div class="cancel-page__container">
+      <header class="cancel-page__header">
+        <h1 class="cancel-page__title">
+          {status === 'success' ? 'تم إلغاء الموعد' : status === 'already_cancelled' ? 'الموعد ملغي مسبقًا' : 'خطأ'}
+        </h1>
+      </header>
 
-    <a
-      href="/"
-      class="inline-block px-10 py-4 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition shadow-md"
-    >
-      العودة إلى الصفحة الرئيسية
-    </a>
-  </div>
-</BaseLayout>
+      <main class="cancel-page__main">
+        <div class="cancel-page__status">
+          {status === 'success' && <span class="cancel-page__icon success">✓</span>}
+          {status === 'error' && <span class="cancel-page__icon error">✗</span>}
+          {status === 'already_cancelled' && <span class="cancel-page__icon info">ℹ</span>}
+
+          <p class="cancel-page__message">{message}</p>
+
+          {errorMessage && (
+            <p class="cancel-page__error-detail">{errorMessage}</p>
+          )}
+        </div>
+
+        <a href="/" class="cancel-page__back-btn">
+          العودة إلى الصفحة الرئيسية
+        </a>
+      </main>
+
+      <footer class="cancel-page__footer">
+        <p>عيادة د. عمرو © {new Date().getFullYear()}</p>
+      </footer>
+    </div>
+
+    <style>
+      :root {
+        --primary: #2563eb;
+        --success: #10b981;
+        --error: #ef4444;
+        --gray: #6b7280;
+        --light: #f9fafb;
+      }
+
+      .cancel-page {
+        min-height: 100vh;
+        background: var(--light);
+        font-family: system-ui, -apple-system, sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 1rem;
+      }
+
+      .cancel-page__container {
+        background: white;
+        border-radius: 1rem;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        max-width: 500px;
+        width: 100%;
+        overflow: hidden;
+        text-align: center;
+      }
+
+      .cancel-page__header {
+        background: var(--primary);
+        color: white;
+        padding: 2rem 1.5rem;
+      }
+
+      .cancel-page__title {
+        margin: 0;
+        font-size: 1.75rem;
+      }
+
+      .cancel-page__main {
+        padding: 2rem 1.5rem;
+      }
+
+      .cancel-page__status {
+        margin-bottom: 2rem;
+      }
+
+      .cancel-page__icon {
+        font-size: 4.5rem;
+        font-weight: bold;
+        display: block;
+        margin-bottom: 1rem;
+      }
+
+      .cancel-page__icon.success { color: var(--success); }
+      .cancel-page__icon.error   { color: var(--error); }
+      .cancel-page__icon.info    { color: var(--primary); }
+
+      .cancel-page__message {
+        font-size: 1.25rem;
+        margin: 0 0 1rem;
+        font-weight: 600;
+      }
+
+      .cancel-page__error-detail {
+        color: var(--error);
+        font-size: 1rem;
+        margin: 1rem 0;
+        padding: 1rem;
+        background: #fee2e2;
+        border-radius: 0.5rem;
+      }
+
+      .cancel-page__back-btn {
+        display: inline-block;
+        padding: 0.875rem 2rem;
+        background: var(--primary);
+        color: white;
+        text-decoration: none;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        font-size: 1.125rem;
+        transition: background 0.2s;
+      }
+
+      .cancel-page__back-btn:hover {
+        background: #1d4ed8;
+      }
+
+      .cancel-page__footer {
+        background: #f3f4f6;
+        padding: 1rem;
+        font-size: 0.875rem;
+        color: var(--gray);
+      }
+
+      @media (max-width: 480px) {
+        .cancel-page__title { font-size: 1.5rem; }
+        .cancel-page__icon  { font-size: 3.5rem; }
+      }
+    </style>
+  </body>
+</html>

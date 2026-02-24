@@ -2,15 +2,17 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { supabase } from '../lib/supabase';
 
-let message = 'جاري التحقق...';
-let isValid = false;
+let status = 'loading';
+let message = 'جاري التحقق من الرابط...';
+let errorMessage = '';
 let appointment = null;
 
 try {
-  const { token, id } = Astro.url.searchParams;
+  const token = Astro.url.searchParams.get('token');
+  const id = Astro.url.searchParams.get('id');
 
   if (!token || !id) {
-    throw new Error('رابط غير صالح');
+    throw new Error('الرابط ناقص أو غير مكتمل');
   }
 
   const { data, error } = await supabase
@@ -20,69 +22,237 @@ try {
     .eq('reschedule_token', token)
     .single();
 
-  if (error || !data) {
-    throw new Error('الرابط منتهي الصلاحية أو غير صالح');
-  }
+  if (error) throw error;
+  if (!data) throw new Error('الرابط غير صالح أو منتهي الصلاحية');
 
   appointment = data;
-  isValid = true;
-  message = 'يمكنك الآن إعادة جدولة موعدك';
+  status = 'ready';
+  message = 'يمكنك الآن اختيار موعد جديد';
+
 } catch (err) {
-  message = err.message || 'حدث خطأ غير متوقع';
+  status = 'error';
+  message = 'حدث خطأ أثناء التحقق';
+  errorMessage = err.message || 'يرجى المحاولة مرة أخرى';
 }
 ---
 
-<BaseLayout title="إعادة جدولة الموعد">
-  <div class="max-w-lg mx-auto py-12">
-    <h1 class="text-3xl font-bold text-center mb-8">إعادة جدولة الموعد</h1>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{status === 'ready' ? 'إعادة جدولة الموعد' : 'خطأ'}</title>
+  </head>
 
-    {isValid ? (
-      <div>
-        <p class="text-lg mb-6 text-center">
-          الموعد الحالي: <strong>{appointment.appointment_date}</strong> الساعة <strong>{appointment.appointment_time}</strong>
-        </p>
+  <body class="reschedule-page">
+    <div class="reschedule-page__container">
+      <header class="reschedule-page__header">
+        <h1 class="reschedule-page__title">
+          {status === 'ready' ? 'إعادة جدولة موعدك' : message}
+        </h1>
+      </header>
 
-        <!-- نموذج إعادة الجدولة -->
-        <form action="/api/reschedule" method="post" class="space-y-6">
-          <input type="hidden" name="id" value={appointment.id} />
-          <input type="hidden" name="token" value={Astro.url.searchParams.get('token')} />
-
+      <main class="reschedule-page__main">
+        {status === 'ready' && appointment ? (
           <div>
-            <label class="block text-sm font-medium mb-2">تاريخ جديد</label>
-            <input
-              type="date"
-              name="new_date"
-              required
-              class="w-full p-3 border rounded-lg"
-            />
-          </div>
+            <div class="reschedule-page__current">
+              <h2>الموعد الحالي</h2>
+              <p>التاريخ: {appointment.appointment_date}</p>
+              <p>الوقت: {appointment.appointment_time}</p>
+            </div>
 
-          <div>
-            <label class="block text-sm font-medium mb-2">وقت جديد</label>
-            <input
-              type="time"
-              name="new_time"
-              required
-              class="w-full p-3 border rounded-lg"
-            />
-          </div>
+            <form class="reschedule-page__form" id="reschedule-form">
+              <div class="reschedule-page__field">
+                <label for="new_date">تاريخ جديد</label>
+                <input
+                  type="date"
+                  id="new_date"
+                  name="new_date"
+                  required
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
 
-          <button
-            type="submit"
-            class="w-full py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition"
-          >
-            تأكيد التغيير
-          </button>
-        </form>
-      </div>
-    ) : (
-      <div class="text-center text-red-600">
-        <h2 class="text-2xl font-bold mb-4">خطأ</h2>
-        <p class="text-lg">{message}</p>
-        <a href="/" class="inline-block mt-6 px-8 py-3 bg-blue-600 text-white rounded-lg">
-          العودة للرئيسية
+              <div class="reschedule-page__field">
+                <label for="new_time">وقت جديد</label>
+                <input type="time" id="new_time" name="new_time" required />
+              </div>
+
+              <input type="hidden" name="id" value={appointment.id} />
+              <input type="hidden" name="token" value={Astro.url.searchParams.get('token')} />
+
+              <button type="submit" class="reschedule-page__submit-btn">
+                تأكيد التغيير
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div class="reschedule-page__error">
+            <p class="reschedule-page__message">{message}</p>
+            {errorMessage && <p class="reschedule-page__error-detail">{errorMessage}</p>}
+          </div>
+        )}
+
+        <a href="/" class="reschedule-page__back-btn">
+          العودة إلى الصفحة الرئيسية
         </a>
-      </div>
-    )}
-  </div>
-</BaseLayout>
+      </main>
+
+      <footer class="reschedule-page__footer">
+        <p>عيادة د. عمرو © {new Date().getFullYear()}</p>
+      </footer>
+    </div>
+
+    <style>
+      :root {
+        --primary: #2563eb;
+        --success: #10b981;
+        --error: #ef4444;
+        --gray: #6b7280;
+        --light: #f9fafb;
+        --border: #d1d5db;
+      }
+
+      .reschedule-page {
+        min-height: 100vh;
+        background: var(--light);
+        font-family: system-ui, sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 1rem;
+      }
+
+      .reschedule-page__container {
+        background: white;
+        border-radius: 1rem;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        max-width: 500px;
+        width: 100%;
+        overflow: hidden;
+      }
+
+      .reschedule-page__header {
+        background: var(--primary);
+        color: white;
+        padding: 1.75rem 1.5rem;
+        text-align: center;
+      }
+
+      .reschedule-page__title {
+        margin: 0;
+        font-size: 1.75rem;
+      }
+
+      .reschedule-page__main {
+        padding: 2rem 1.5rem;
+      }
+
+      .reschedule-page__current {
+        background: #f3f4f6;
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+        margin-bottom: 2rem;
+        text-align: center;
+      }
+
+      .reschedule-page__current h2 {
+        margin: 0 0 1rem;
+        font-size: 1.25rem;
+      }
+
+      .reschedule-page__form {
+        display: grid;
+        gap: 1.25rem;
+      }
+
+      .reschedule-page__field label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+        color: #374151;
+      }
+
+      .reschedule-page__field input {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid var(--border);
+        border-radius: 0.5rem;
+        font-size: 1rem;
+      }
+
+      .reschedule-page__submit-btn {
+        width: 100%;
+        padding: 1rem;
+        background: var(--success);
+        color: white;
+        border: none;
+        border-radius: 0.5rem;
+        font-size: 1.125rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+
+      .reschedule-page__submit-btn:hover {
+        background: #059669;
+      }
+
+      .reschedule-page__error {
+        text-align: center;
+        padding: 2rem 1rem;
+        color: var(--error);
+      }
+
+      .reschedule-page__error-detail {
+        margin-top: 1rem;
+        padding: 1rem;
+        background: #fee2e2;
+        border-radius: 0.5rem;
+        font-size: 0.95rem;
+      }
+
+      .reschedule-page__back-btn {
+        display: block;
+        margin: 2rem auto 0;
+        padding: 0.875rem 2rem;
+        background: var(--primary);
+        color: white;
+        text-decoration: none;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        text-align: center;
+      }
+
+      .reschedule-page__footer {
+        background: #f3f4f6;
+        padding: 1rem;
+        text-align: center;
+        font-size: 0.875rem;
+        color: var(--gray);
+      }
+    </style>
+
+    <script>
+      // معالجة النموذج (إعادة جدولة)
+      document.getElementById('reschedule-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const formData = new FormData(form);
+
+        try {
+          const response = await fetch('/api/reschedule', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!response.ok) throw new Error('فشل التغيير');
+
+          alert('تم تغيير الموعد بنجاح');
+          window.location.href = '/';
+        } catch (err) {
+          alert('حدث خطأ: ' + err.message);
+        }
+      });
+    </script>
+  </body>
+</html>

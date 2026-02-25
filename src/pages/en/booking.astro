@@ -92,7 +92,7 @@ const timeTriggerDefault  = t('booking.time_trigger_default');
   </section>
 
   <script>
-    const EDGE_FUNCTION_URL = 'https://toleixbomnteyzqztegs.supabase.co/functions/v1/check-booked-times';
+    const EDGE_FUNCTION_URL = `${import.meta.env.PUBLIC_SUPABASE_URL}/functions/v1/check-booked-times`;
 
     const form = document.getElementById('bookingForm');
     const messageDiv = document.getElementById('message');
@@ -152,7 +152,7 @@ const timeTriggerDefault  = t('booking.time_trigger_default');
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvbGVpeGJvbW50ZXl6cXp0ZWdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEwNzM5MDIsImV4cCI6MjA4NjY0OTkwMn0.LUziw0qHpLRJp_jj_m_hL8_Q1z3fanc70zBNePKabDI',
+            'apikey': import.meta.env.PUBLIC_SUPABASE_ANON_KEY,
           },
           body: JSON.stringify({ date: dateStr }),
         });

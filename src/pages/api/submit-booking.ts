@@ -130,6 +130,7 @@ export async function POST({ request, url }) {
       reason,
       appointment_date,
       appointment_time: appointment_time + ":00",
+      status: "confirmed",
     });
 
     if (insertError) {
